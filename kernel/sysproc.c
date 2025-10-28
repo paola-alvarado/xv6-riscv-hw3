@@ -108,3 +108,19 @@ sys_getprocs(void)
   return(procinfo(addr));
 }
 
+uint64
+sys_getpriority(void){
+  struct proc *p = myproc();
+  return p->priority;
+}
+
+uint64
+sys_setpriority(void){
+  int pr;
+  if(argint(0, &pr) < 0) return -1;
+  if(pr < 0 || pr > 49)  return -1; // enforce user-set range
+  struct proc *p = myproc();
+  p->priority = pr;
+  return 0;
+}
+

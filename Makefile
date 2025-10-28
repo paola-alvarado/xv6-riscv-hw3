@@ -137,6 +137,10 @@ UPROGS=\
 	$U/_pstest\
 	$U/_sleep\
 	$U/_matmul\
+	$U/_task2\
+	$U/_task3\
+	$U/_task4\
+	$U/_pexecx
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

@@ -11,5 +11,14 @@
 #define NBUF         (MAXOPBLOCKS*3)  // size of disk block cache
 #define FSSIZE       1000  // size of file system in blocks
 #define MAXPATH      128   // maximum file path name
+// hw3 scheduler policy
+#define SCHED_RR        0
+#define SCHED_PRIORITY  1
+#define SCHED_POLICY    SCHED_PRIORITY
+
+#define MIN_PRIO        0       // minimum base priority
+#define MAX_PRIO        100     // maximum base priority
+#define AGING_TICKS     50      // every 50 ticks → +1 effective priority
+#define AGE_DIV         20      // alternate aging factor (if used)
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };

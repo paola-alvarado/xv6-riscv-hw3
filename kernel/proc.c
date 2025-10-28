@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 #include "pstat.h"
+extern uint ticks;   // global timer for readytime
 
 struct cpu cpus[NCPU];
 
@@ -244,6 +245,8 @@ userinit(void)
   p->cwd = namei("/");
 
   p->state = RUNNABLE;
+  p->priority = 0;
+  p->readytime = ticks;
 
   release(&p->lock);
 }
@@ -313,7 +316,9 @@ fork(void)
   release(&wait_lock);
 
   acquire(&np->lock);
+  np->priority = p->priority;   // inherit parent's priority
   np->state = RUNNABLE;
+  np->readytime = ticks;
   release(&np->lock);
 
   return pid;
@@ -446,24 +451,57 @@ scheduler(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
+    if (SCHED_POLICY == SCHED_RR) {
+      for(p = proc; p < &proc[NPROC]; p++){
+        acquire(&p->lock);
+        if(p->state == RUNNABLE){
+          p->state = RUNNING;
+          c->proc = p;
+          swtch(&c->context, &p->context);
+          c->proc = 0;
+        }
+        release(&p->lock);
       }
-      release(&p->lock);
+    } else {
+    
+      // else
+      // priority + aging
+      struct proc *best = 0;
+      int best_eff = -1;
+      uint now = ticks;
+
+      for(p = proc; p < &proc[NPROC]; p++){
+          acquire(&p->lock);
+          if(p->state == RUNNABLE){
+            int waited = (int)(now - p->readytime);
+            if(waited < 0) waited = 0;
+
+            int eff = p->priority + waited / AGING_TICKS; // in param.h
+            if(eff > MAX_PRIO) eff = MAX_PRIO;
+
+            if(eff > best_eff ||
+              (eff == best_eff && (!best || p->readytime < best->readytime))){
+              if(best) release(&best->lock);
+              best = p;
+              best_eff = eff;
+              continue; // keep lock on current best
+            }
+          }
+        release(&p->lock);
+      }
+
+      if(best){
+        best->state = RUNNING;
+        c->proc = best;
+        swtch(&c->context, &best->context);
+        c->proc = 0;
+        release(&best->lock);
+      }
+// endif
     }
   }
 }
+
 
 // Switch to scheduler.  Must hold only p->lock
 // and have changed proc->state. Saves and restores
@@ -499,6 +537,7 @@ yield(void)
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
+  p->readytime = ticks;
   sched();
   release(&p->lock);
 }
@@ -567,6 +606,7 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        p->readytime = ticks;
       }
       release(&p->lock);
     }
@@ -588,6 +628,7 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+        p->readytime = ticks;
       }
       release(&p->lock);
       return 0;
@@ -678,8 +719,12 @@ procinfo(uint64 addr)
       procinfo.ppid = (p->parent)->pid;
     else
       procinfo.ppid = 0;
-    for (int i=0; i<16; i++)
+    for (int i = 0; i < 16; i++) {
       procinfo.name[i] = p->name[i];
+    }
+
+    procinfo.priority  = p->priority;     // HW3
+    procinfo.readytime = p->readytime;    // HW3
    if (copyout(thisproc->pagetable, addr, (char *)&procinfo, sizeof(procinfo)) < 0)
       return -1;
     addr += sizeof(procinfo);

@@ -37,3 +37,5 @@ entry("sbrk");
 entry("sleep");
 entry("uptime");
 entry("getprocs");
+entry("getpriority"); # hw3 getpriority
+entry("setpriority"); # hw3 setpriority
